@@ -1,0 +1,14 @@
+NOTICE
+
+This Hermes plugin does not include, bundle or redistribute the `opencode2api`
+relay binary.
+
+The relay is the property of its upstream author (6Kmfi6HP/opencode2api,
+"All rights reserved by default" as documented in that project). At first start
+this plugin downloads the officially published release asset for the pinned
+version directly from the upstream GitHub release, verifies its SHA-256 against
+the upstream-generated `checksums.txt`, stores it inside the Hermes tree
+(`$HERMES_HOME/plugin-data/opencode2api/`) and runs it locally.
+
+Users of this plugin are end users of the upstream project and must respect
+its terms of service and any usage restrictions its author publishes.

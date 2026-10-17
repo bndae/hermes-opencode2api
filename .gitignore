@@ -1,0 +1,9 @@
+__pycache__/
+*.py[co]
+tests/__pycache__/
+data/
+runtime/
+logs/
+*.log
+*.log.*
+.DS_Store
