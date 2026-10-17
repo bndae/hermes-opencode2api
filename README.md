@@ -42,35 +42,15 @@ hermes plugins enable opencode2api
 Enable takes effect on the next Hermes start (restart the desktop app or start
 a new `hermes chat` session). That is the only install step.
 
-## One-time configuration: register the model route
+## Zero-config model route
 
-The plugin serves the relay; Hermes still needs to know that the route
-`custom:opencode2api` exists. Add the following block once to
-`~/.hermes/config.yaml`:
+On first load the plugin itself adds the `custom:opencode2api` route to your
+`~/.hermes/config.yaml` (a `custom_providers` entry pointing at the local
+relay, `api_key: public`, the verified model list, `models_discovered: true`).
+It writes only this one entry — idempotently, never touching anything else, and
+never from the gateway/cron services.
 
-```yaml
-custom_providers:
-  - name: opencode2api
-    base_url: http://127.0.0.1:8000/v1
-    api_key: public
-    model: deepseek-v4.1-flash
-    models:
-      deepseek-v4.1-flash: {}
-      glm-5.3-flash: {}
-      big-pickle: {}
-      mimo-v2.6-flash: {}
-      nemotron-3.5-lightning: {}
-      longcat-2.5-preview: {}
-      space-bunny: {}
-      beam: {}
-    models_discovered: true
-```
-
-> If you already have a `custom_providers:` block, add this single entry to the
-> existing list instead of creating a second block.
-
-That is the whole setup. The provider is now visible in `hermes model`, in the
-Desktop model pill and in `/model`:
+So after the restart just pick the model:
 
 ```bash
 hermes chat --provider custom:opencode2api -m deepseek-v4.1-flash
@@ -78,6 +58,17 @@ hermes chat --provider custom:opencode2api -m glm-5.3-flash
 ```
 
 Or switch inside a session: `/model custom:opencode2api:glm-5.3-flash`.
+
+Prefer configuring by hand? The equivalent block it writes to
+`~/.hermes/config.yaml` (any existing route with the same name is left alone):
+
+```yaml
+custom_providers:
+  - name: opencode2api
+    base_url: http://127.0.0.1:8000/v1
+    api_key: public
+    model: deepseek-v4.1-flash
+```
 
 ## What "running with Hermes" looks like
 
@@ -130,6 +121,9 @@ unauthenticated on any network it can be reached from.
   served from the Hermes tree.
 - Model usage sends traffic through the relay to the upstream `opencode.ai`
   service; respect the terms of service upstream publishes.
+- On first load the plugin adds the `custom:opencode2api` route entry to
+  `~/.hermes/config.yaml` when it is missing (idempotent; no other setting is
+  ever read or written).
 - The plugin runs a long-lived local background process (the relay on port
   8000) as a child of Hermes.
 - Nothing is stored outside `$HERMES_HOME` and there is no telemetry.

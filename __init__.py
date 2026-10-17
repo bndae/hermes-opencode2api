@@ -7,10 +7,11 @@ Hermes loads the plugin and dies with the Hermes process that spawned it
 cron/kanban/send services never own a relay — closing the desktop app therefore
 always closes the relay.
 
-Model routing itself stays in config.yaml (`custom_providers.opencode2api`);
-this plugin owns only the process lifecycle: a `pre_api_request` hook guarantees
-the relay is up (and revives it) whenever a request for that route is about to
-fly.
+Model routing connects itself: on first load the plugin also appends the
+`custom_providers.opencode2api` entry to `~/.hermes/config.yaml` if the route
+is not configured yet (idempotent via `route_setup.py`; it never touches any
+other setting). A `pre_api_request` hook guarantees the relay is up whenever a
+request for that route is about to fly.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import supervisor
+from . import route_setup, supervisor
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,15 @@ def _bootstrap() -> None:
     _bootstrap._done = True
 
     atexit.register(_shutdown)
-    _spawn_at_boot(_data_root(), _config_path(_data_root()))
+    if supervisor.should_manage_proxy(sys.argv):
+        _spawn_at_boot(_data_root(), _config_path(_data_root()))
+        # Zero-config route: append the custom_providers entry once (idempotent
+        # no-op when the route already exists). Interactive surfaces only —
+        # persistent services never write the user's config.
+        try:
+            route_setup.ensure_route()
+        except Exception as exc:  # belt & braces: ensure_route is already fail-open
+            logger.warning("opencode2api plugin: route setup failed: %s", exc)
 
 
 def register(ctx) -> None:
