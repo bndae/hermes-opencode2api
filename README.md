@@ -30,7 +30,7 @@ day of the pinned release (verified list for v0.14.30):
 - Outbound network (first start downloads the relay binary; later starts use
   the cached copy)
 
-## Install (no plugin catalog needed)
+## Install
 
 The plugin lives in this repository and installs straight from it:
 
