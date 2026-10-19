@@ -32,7 +32,7 @@ import urllib.request
 from pathlib import Path
 from typing import Sequence
 
-VERSION = "0.14.30"
+VERSION = "0.14.35"
 REPOSITORY = "6Kmfi6HP/opencode2api"
 # The relay's historical port (the systemd unit served 8000 too). Keeping it
 # means the cutover needs NO config.yaml edit and NO model re-selection: the
@@ -144,7 +144,7 @@ def release_asset(os_name: str, architecture: str, version: str) -> str:
 
 
 def _asset_dir(asset: str) -> str:
-    """``opencode2api_v0.14.30_linux_amd64.tar.gz`` → ``opencode2api_v0.14.30_linux_amd64``."""
+    """``opencode2api_v0.14.35_linux_amd64.tar.gz`` → ``opencode2api_v0.14.35_linux_amd64``."""
     return asset[:-7] if asset.endswith(".tar.gz") else asset
 
 

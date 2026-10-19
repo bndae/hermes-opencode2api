@@ -18,11 +18,11 @@ with **nothing installed outside Hermes**.
 ## Models exposed
 
 The relay exposes whatever the upstream OpenCode Zen free tier serves on the
-day of the pinned release (verified list for v0.14.30):
+day of the pinned release (verified list for v0.14.35):
 
 `deepseek-v4.1-flash`, `glm-5.3-flash`, `big-pickle`, `mimo-v2.6-flash`,
 `nemotron-3.5-super-vl`, `nemotron-3.5-lightning`, `longcat-2.5-preview`,
-`space-bunny`, `beam`, `jev-1.13`.
+`minimax-m3.1-flash`, `jev-1.13`, `beam`.
 
 ## Requirements
 
@@ -41,6 +41,19 @@ hermes plugins enable opencode2api
 
 Enable takes effect on the next Hermes start (restart the desktop app or start
 a new `hermes chat` session). That is the only install step.
+
+## Updating
+
+```bash
+hermes plugins update opencode2api
+```
+
+That pulls the newest plugin revision. The relay binary is pinned per plugin
+revision: on the next Hermes start after an update the plugin sees the new pin,
+downloads that upstream release into
+`$HERMES_HOME/plugin-data/opencode2api/runtime/<version>/` (SHA-256 verified
+against the release's `checksums.txt`) and starts it. The previous
+`runtime/<old-version>/` directory is left untouched and can be deleted.
 
 ## Zero-config model route
 

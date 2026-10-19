@@ -41,14 +41,14 @@ class SupervisorContractTests(unittest.TestCase):
         )
         for os_name, arch, suffix in cases:
             with self.subTest(os=os_name, arch=arch):
-                self.assertIn(suffix, supervisor.release_asset(os_name, arch, "0.14.30"))
+                self.assertIn(suffix, supervisor.release_asset(os_name, arch, supervisor.VERSION))
 
     def test_unsupported_platform_is_explicit(self):
         with self.assertRaises(supervisor.UnsupportedPlatform):
-            supervisor.release_asset("Plan9", "mips", "0.14.30")
+            supervisor.release_asset("Plan9", "mips", supervisor.VERSION)
 
     def test_checksum_parser_requires_exact_asset_and_sha256(self):
-        asset = "opencode2api_v0.14.30_linux_amd64.tar.gz"
+        asset = f"opencode2api_v{supervisor.VERSION}_linux_amd64.tar.gz"
         digest = "a" * 64
         self.assertEqual(supervisor.checksum_for(f"{digest}  ./{asset}\n", asset), digest)
         for text in (f"{'a' * 63}  ./{asset}\n", f"{'b' * 64}  ./other.tar.gz\n"):

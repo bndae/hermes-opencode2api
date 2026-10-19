@@ -25,9 +25,11 @@ _ROUTE_MODELS = (
     "glm-5.3-flash",
     "big-pickle",
     "mimo-v2.6-flash",
+    "nemotron-3.5-super-vl",
     "nemotron-3.5-lightning",
     "longcat-2.5-preview",
-    "space-bunny",
+    "minimax-m3.1-flash",
+    "jev-1.13",
     "beam",
 )
 
