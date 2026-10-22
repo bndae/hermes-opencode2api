@@ -68,12 +68,10 @@ def _spawn_at_boot(data_root: Path, config_path: Path) -> None:
 
 def _bootstrap() -> None:
     """Register exit coupling + boot spawn exactly once per process."""
-    # Idempotent under plugin reload: a function attribute survives re-import
-    # because sys.modules keeps the old module object alive.
-    if getattr(_bootstrap, "_done", False):
-        return
-    _bootstrap._done = True
-
+    # `shutdown_proxy()` is idempotent, so a re-imported module may register the
+    # exit handler again. The spawn below must NEVER be guarded by a "already
+    # bootstrapped" flag: on a force re-discovery the module is reused, so such a
+    # flag would skip the respawn right after unload stopped the relay.
     atexit.register(_shutdown)
     if supervisor.should_manage_proxy(sys.argv):
         _spawn_at_boot(_data_root(), _config_path(_data_root()))

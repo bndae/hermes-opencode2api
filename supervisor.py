@@ -40,6 +40,9 @@ REPOSITORY = "6Kmfi6HP/opencode2api"
 # stays valid when the plugin replaces the unit.
 PORT = 8000
 HEALTH_URL = f"http://127.0.0.1:{PORT}/health"
+# How long a freshly spawned child may take to answer /health before the keeper
+# treats it as wedged and replaces it.
+_STARTUP_GRACE_SECONDS = 30.0
 
 # Mirrors the tuned relay config from the pre-plugin deployment (relay-side
 # prompt-cache knobs off — that upstream rejects them — plus free-tier caps).
@@ -307,57 +310,108 @@ class ProxyManager:
             time.sleep(0.2)
         raise TimeoutError(f"opencode2api did not become healthy within {timeout:.0f}s; see relay log")
 
+    def _spawn_child(self, executable: Path, log_path: Path) -> subprocess.Popen:  # pragma: no cover - runtime
+        """Popen the relay on THIS thread (PDEATHSIG couples to it, and the keeper
+        thread is the only one that lives as long as the process)."""
+        env = {
+            **os.environ,
+            "OPENCODE2API_CONFIG": str(self.config_path),
+            "OPENCODE2API_LOG_FILE": str(log_path),
+        }
+        preexec = _preexec_pdeathsig if os.name == "posix" else None
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        with log_path.open("ab", buffering=0) as log:
+            return subprocess.Popen(
+                [
+                    str(executable),
+                    "-port", str(PORT),
+                    "-config", str(self.config_path),
+                    "-password", "",
+                    "-log-file", str(log_path),
+                    "-log-stdout=false",
+                ],
+                cwd=str(self.data_dir), env=env, stdin=subprocess.DEVNULL,
+                stdout=log, stderr=subprocess.STDOUT,
+                preexec_fn=preexec, creationflags=creationflags,
+            )
+
+    def _terminate_child(self, proc: subprocess.Popen) -> None:  # pragma: no cover - runtime
+        if proc.poll() is not None:
+            return
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=3)
+
     def _keeper_main(self) -> None:  # pragma: no cover - runtime thread path
-        executable: Path
-        log_path: Path
-        proc: subprocess.Popen
+        """Supervise the relay for the lifetime of this thread.
+
+        The loop judges the ENDPOINT, not just our own child: a healthy relay is
+        adopted (whoever spawned it), an unhealthy one with no live child is
+        (re)spawned, and a child that dies on its own — SIGTERM, OOM, a port
+        taken by a hand-started relay — is replaced after a bounded backoff.
+        That is what makes the relay survive whatever killed it between two
+        requests; before, the keeper simply gave up and nothing came back.
+        """
         try:
             executable = self.executable or install_binary(self.data_dir)
             self.executable = executable
             ensure_config(self.config_path)
             log_path = self.data_dir / "logs" / "opencode2api.log"
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            env = {
-                **os.environ,
-                "OPENCODE2API_CONFIG": str(self.config_path),
-                "OPENCODE2API_LOG_FILE": str(log_path),
-            }
-            preexec = _preexec_pdeathsig if os.name == "posix" else None
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-            with log_path.open("ab", buffering=0) as log:
-                proc = subprocess.Popen(
-                    [
-                        str(executable),
-                        "-port", str(PORT),
-                        "-config", str(self.config_path),
-                        "-password", "",
-                        "-log-file", str(log_path),
-                        "-log-stdout=false",
-                    ],
-                    cwd=str(self.data_dir), env=env, stdin=subprocess.DEVNULL,
-                    stdout=log, stderr=subprocess.STDOUT,
-                    preexec_fn=preexec, creationflags=creationflags,
-                )
         except Exception as exc:
             with self._lock:
                 self._last_error = exc
             return
-        with self._lock:
-            self.process = proc
-        # Coupled lifetime: hold this thread until stop is requested or the relay dies.
-        while not self._stop_event.wait(0.5):
-            if proc.poll() is not None:
+
+        backoff = 1.0
+        spawned_at = 0.0
+        while not self._stop_event.is_set():
+            if healthy(timeout=0.3):
+                backoff = 1.0
                 with self._lock:
-                    if self.process is proc:
+                    self._last_error = None
+                self._stop_event.wait(1.0)
+                continue
+            with self._lock:
+                child = self.process
+            alive = child is not None and child.poll() is None
+            if child is not None and alive:
+                # Our child is still booting (~2s) or wedged: give it grace
+                # before declaring it dead.
+                if time.monotonic() - spawned_at < _STARTUP_GRACE_SECONDS:
+                    self._stop_event.wait(0.5)
+                    continue
+                with self._lock:
+                    if self.process is child:
                         self.process = None
-                return
-        if proc.poll() is None:
-            proc.terminate()
+                self._terminate_child(child)
+                spawned_at = 0.0
+                continue
+            with self._lock:
+                if self.process is child:
+                    self.process = None
             try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=3)
+                proc = self._spawn_child(executable, log_path)
+            except Exception as exc:
+                with self._lock:
+                    self._last_error = exc
+                if self._stop_event.wait(min(backoff, 5.0)):
+                    return
+                backoff = min(backoff * 2, 30.0)
+                continue
+            with self._lock:
+                self.process = proc
+                self._last_error = None
+            spawned_at = time.monotonic()
+            self._stop_event.wait(0.5)
+        with self._lock:
+            child = self.process
+            self.process = None
+        if child is not None:
+            self._terminate_child(child)
 
     def stop(self) -> None:
         with self._lock:
