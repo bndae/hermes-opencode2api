@@ -15,6 +15,10 @@ with **nothing installed outside Hermes**.
 - The process that serves the request owns the relay. On Hermes 0.22.4 Desktop
   chats through the gateway service, so the relay lives exactly as long as that
   process does; cron, kanban and `hermes send` one-shot workers never own one.
+- Idle stop: after 10 minutes without a request the plugin stops the relay and
+  waits; the next request brings it back in ~2 s. Override with
+  `OPENCODE2API_IDLE_STOP_SECONDS` (0 = never park) in the gateway's
+  environment.
 
 ## Models exposed
 

@@ -52,6 +52,11 @@ class SupervisorContractTests(unittest.TestCase):
         with self.assertRaises(supervisor.UnsupportedPlatform):
             supervisor.release_asset("Plan9", "mips", supervisor.VERSION)
 
+    def test_idle_window_parks_only_an_owned_relay(self):
+        self.assertFalse(supervisor.idle_expired(now=1000.0, last_activity=500.0, idle_seconds=0))
+        self.assertFalse(supervisor.idle_expired(now=1000.0, last_activity=500.0, idle_seconds=600))
+        self.assertTrue(supervisor.idle_expired(now=1000.0, last_activity=300.0, idle_seconds=600))
+
     def test_checksum_parser_requires_exact_asset_and_sha256(self):
         asset = f"opencode2api_v{supervisor.VERSION}_linux_amd64.tar.gz"
         digest = "a" * 64

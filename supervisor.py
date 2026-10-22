@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import platform
 import re
@@ -32,6 +33,8 @@ import urllib.request
 from pathlib import Path
 from typing import Sequence
 
+logger = logging.getLogger(__name__)
+
 VERSION = "0.14.38"
 REPOSITORY = "6Kmfi6HP/opencode2api"
 # The relay's historical port (the systemd unit served 8000 too). Keeping it
@@ -43,6 +46,20 @@ HEALTH_URL = f"http://127.0.0.1:{PORT}/health"
 # How long a freshly spawned child may take to answer /health before the keeper
 # treats it as wedged and replaces it.
 _STARTUP_GRACE_SECONDS = 30.0
+
+# Idle stop: when OUR relay has not served a request for this many seconds, the
+# keeper stops it and waits for the next request to wake it (the per-request
+# hook respawns it, ~2s with the binary cached). This is how "close Hermes →
+# the proxy goes away" is honoured on Hermes 0.22.4, where the relay's parent is
+# the long-lived gateway service rather than the desktop app: the desktop's own
+# /v1/models polling keeps it alive while the app is open, and the idle window
+# covers the gap after it closes. 0 disables the idle stop.
+IDLE_STOP_SECONDS = float(os.environ.get("OPENCODE2API_IDLE_STOP_SECONDS") or 600.0)
+
+
+def idle_expired(now: float, last_activity: float, idle_seconds: float = IDLE_STOP_SECONDS) -> bool:
+    """True when an owned relay has been idle past its window (pure, unit-tested)."""
+    return idle_seconds > 0 and (now - last_activity) > idle_seconds
 
 # Mirrors the tuned relay config from the pre-plugin deployment (relay-side
 # prompt-cache knobs off — that upstream rejects them — plus free-tier caps).
@@ -247,6 +264,14 @@ def healthy(timeout: float = 0.5) -> bool:
         return False
 
 
+def _file_size(path: Path) -> int:
+    """Log size as an activity proxy: the relay appends one line per request."""
+    try:
+        return path.stat().st_size
+    except OSError:
+        return -1
+
+
 def _preexec_pdeathsig() -> None:  # pragma: no cover - posix runtime path
     """Kernel-side death coupling: SIGTERM the relay when Hermes dies — even on SIGKILL."""
     if os.name != "posix":
@@ -283,6 +308,10 @@ class ProxyManager:
         self._stop_event = threading.Event()
         self._keeper: threading.Thread | None = None
         self._last_error: Exception | None = None
+        # Idle stop: set by the keeper after it parked the relay, cleared by the
+        # next ensure_running (a real request) so the child comes back.
+        self._wake = threading.Event()
+        self._idle_stopped = False
 
     def ensure_running(self, *, wait: bool = True, timeout: float = 20.0) -> bool:
         """Spawn or adopt the relay.
@@ -298,6 +327,8 @@ class ProxyManager:
                 self._keeper = threading.Thread(
                     target=self._keeper_main, name="opencode2api-keeper", daemon=True)
                 self._keeper.start()
+        # A relay parked by the idle stop comes back on this signal.
+        self._wake.set()
         if not wait:
             return True
         deadline = time.monotonic() + timeout
@@ -368,11 +399,37 @@ class ProxyManager:
 
         backoff = 1.0
         spawned_at = 0.0
+        last_activity = time.monotonic()
+        last_size = _file_size(log_path)
         while not self._stop_event.is_set():
+            if self._idle_stopped:
+                # Parked after the idle window: stay down until a request wakes us.
+                if not self._wake.wait(1.0):
+                    continue
+                self._wake.clear()
+                self._idle_stopped = False
+                last_activity = time.monotonic()
+                last_size = _file_size(log_path)
             if healthy(timeout=0.3):
                 backoff = 1.0
                 with self._lock:
                     self._last_error = None
+                size = _file_size(log_path)
+                now = time.monotonic()
+                if size != last_size:
+                    last_size, last_activity = size, now
+                with self._lock:
+                    owned = self.process is not None and self.process.poll() is None
+                if owned and idle_expired(now, last_activity, IDLE_STOP_SECONDS):
+                    with self._lock:
+                        child, self.process = self.process, None
+                    if child is not None:
+                        self._terminate_child(child)
+                    self._idle_stopped = True
+                    logger.info(
+                        "opencode2api relay idle for %ss — stopped; the next request restarts it",
+                        int(IDLE_STOP_SECONDS))
+                    continue
                 self._stop_event.wait(1.0)
                 continue
             with self._lock:
