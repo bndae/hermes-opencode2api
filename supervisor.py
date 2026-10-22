@@ -32,7 +32,7 @@ import urllib.request
 from pathlib import Path
 from typing import Sequence
 
-VERSION = "0.14.35"
+VERSION = "0.14.38"
 REPOSITORY = "6Kmfi6HP/opencode2api"
 # The relay's historical port (the systemd unit served 8000 too). Keeping it
 # means the cutover needs NO config.yaml edit and NO model re-selection: the

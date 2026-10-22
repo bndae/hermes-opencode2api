@@ -18,7 +18,7 @@ with **nothing installed outside Hermes**.
 ## Models exposed
 
 The relay exposes whatever the upstream OpenCode Zen free tier serves on the
-day of the pinned release (verified list for v0.14.35):
+day of the pinned release (verified list for v0.14.38):
 
 `deepseek-v4.1-flash`, `glm-5.3-flash`, `big-pickle`, `mimo-v2.6-flash`,
 `nemotron-3.5-super-vl`, `nemotron-3.5-lightning`, `longcat-2.5-preview`,
