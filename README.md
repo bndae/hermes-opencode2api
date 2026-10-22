@@ -12,8 +12,9 @@ with **nothing installed outside Hermes**.
 - The relay starts with Hermes and is killed with Hermes (graceful `atexit`
   plus a kernel-side `PR_SET_PDEATHSIG` coupling on Linux, `CREATE_NO_WINDOW`
   process handling on Windows) — a hard kill of Hermes cannot orphan it.
-- The gateway, cron, kanban and `hermes send` services never spawn or own the
-  relay, so it cannot outlive your session.
+- The process that serves the request owns the relay. On Hermes 0.22.4 Desktop
+  chats through the gateway service, so the relay lives exactly as long as that
+  process does; cron, kanban and `hermes send` one-shot workers never own one.
 
 ## Models exposed
 
@@ -61,7 +62,7 @@ On first load the plugin itself adds the `custom:opencode2api` route to your
 `~/.hermes/config.yaml` (a `custom_providers` entry pointing at the local
 relay, `api_key: public`, the verified model list, `models_discovered: true`).
 It writes only this one entry — idempotently, never touching anything else, and
-never from the gateway/cron services.
+never from cron/kanban/send one-shot workers.
 
 So after the restart just pick the model:
 

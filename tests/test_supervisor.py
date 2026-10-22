@@ -11,10 +11,15 @@ spec.loader.exec_module(supervisor)
 
 
 class SupervisorContractTests(unittest.TestCase):
-    def test_gateway_surface_does_not_own_proxy(self):
-        self.assertFalse(supervisor.should_manage_proxy(["hermes", "gateway", "run"]))
+    def test_gateway_surface_owns_proxy(self):
+        # 0.22.4: Desktop chats THROUGH the gateway service, so the gateway is the
+        # process that serves the request and must own the relay.
+        self.assertTrue(supervisor.should_manage_proxy(["hermes", "gateway", "run"]))
+
+    def test_one_shot_workers_do_not_own_proxy(self):
         self.assertFalse(supervisor.should_manage_proxy(["hermes", "cron", "run"]))
         self.assertFalse(supervisor.should_manage_proxy(["hermes", "send", "-q", "hi"]))
+        self.assertFalse(supervisor.should_manage_proxy(["hermes", "kanban", "serve-worker"]))
 
     def test_desktop_and_chat_surfaces_can_manage_proxy(self):
         self.assertTrue(supervisor.should_manage_proxy(["hermes", "serve", "--host", "127.0.0.1"]))

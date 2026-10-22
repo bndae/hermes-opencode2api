@@ -88,16 +88,21 @@ def executable_name() -> str:
 
 
 def should_manage_proxy(argv: Sequence[str]) -> bool:
-    """Own the relay only in interactive Hermes processes, never persistent services.
+    """Own the relay in every process that actually serves inference.
 
-    The gateway (``hermes-gateway.service``) and kanban/cron/worker processes
-    are long-lived: a relay spawned there would outlive every desktop/CLI
-    session and defeat the "runs with Hermes only" contract. Management
-    subcommands are short-lived and never serve inference.
+    Hermes 0.22.4 made the installed gateway service the surface Desktop chats
+    through: its turns run as ``platform=local`` inside ``hermes-gateway.service``
+    (``gateway run``), and Desktop no longer spawns a per-app ``serve`` backend.
+    Excluding ``gateway`` there would leave the relay unowned and every request
+    would fail to connect, so the gateway owns it like any other serving surface.
+
+    What stays excluded: one-shot worker kinds that never serve a model request
+    (``cron``/``kanban``/``serve-worker``/``daemon``/``send``) and management
+    subcommands, which are short-lived and never call a model.
     """
     args = [Path(str(part)).name.lower() for part in argv]
     trailing = set(args[1:])
-    if trailing & {"gateway", "cron", "kanban", "serve-worker", "daemon", "send"}:
+    if trailing & {"cron", "kanban", "serve-worker", "daemon", "send"}:
         return False
     # First real argument decides: management/inspection commands never start a proxy.
     management = {"doctor", "status", "model", "auth", "config", "plugins", "setup",

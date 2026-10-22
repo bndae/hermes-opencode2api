@@ -3,9 +3,10 @@
 Runs the `opencode2api` relay (https://github.com/6Kmfi6HP/opencode2api, pinned
 release, SHA256-verified) as a **child of the Hermes process**: it starts when
 Hermes loads the plugin and dies with the Hermes process that spawned it
-(atexit + PR_SET_PDEATHSIG from a keeper thread). The gateway and
-cron/kanban/send services never own a relay — closing the desktop app therefore
-always closes the relay.
+(atexit + PR_SET_PDEATHSIG from a keeper thread). The process that serves the
+model request owns the relay: on Hermes 0.22.4 that is the gateway service,
+which Desktop chats through, so the relay lives exactly as long as that process.
+cron/kanban/send one-shot workers never own one.
 
 Model routing connects itself: on first load the plugin also appends the
 `custom_providers.opencode2api` entry to `~/.hermes/config.yaml` if the route
@@ -20,6 +21,7 @@ import atexit
 import logging
 import os
 import sys
+import threading
 from pathlib import Path
 
 from . import route_setup, supervisor
@@ -75,13 +77,20 @@ def _bootstrap() -> None:
     atexit.register(_shutdown)
     if supervisor.should_manage_proxy(sys.argv):
         _spawn_at_boot(_data_root(), _config_path(_data_root()))
-        # Zero-config route: append the custom_providers entry once (idempotent
-        # no-op when the route already exists). Interactive surfaces only —
-        # persistent services never write the user's config.
-        try:
-            route_setup.ensure_route()
-        except Exception as exc:  # belt & braces: ensure_route is already fail-open
-            logger.warning("opencode2api plugin: route setup failed: %s", exc)
+        # Config I/O must not run inside Hermes 0.22.4's 10-second plugin
+        # registration deadline. It is best-effort and unrelated to the hook.
+        threading.Thread(
+            target=_ensure_route_async,
+            name="opencode2api-route-setup",
+            daemon=True,
+        ).start()
+
+
+def _ensure_route_async() -> None:
+    try:
+        route_setup.ensure_route()
+    except Exception as exc:  # belt & braces: route setup is fail-open
+        logger.warning("opencode2api plugin: route setup failed: %s", exc)
 
 
 def register(ctx) -> None:

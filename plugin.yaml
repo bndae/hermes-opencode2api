@@ -1,6 +1,6 @@
 name: opencode2api
 version: 1.2.0
-description: "Runs the opencode2api relay (OpenCode Zen free models) as a child of the Hermes process — starts with Hermes, dies with Hermes; gateway/cron never own it."
+description: "Runs the opencode2api relay (OpenCode Zen free models) as a child of the Hermes process — starts with Hermes, dies with Hermes; cron/kanban/send workers never own it."
 author: bndae
 kind: standalone
 platforms:
